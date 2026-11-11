@@ -31,7 +31,7 @@ img.ad{max-width:100%;max-height:62vh;display:block;margin:auto;border:3px solid
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // ===== INDSÆT DIN FIREBASE-KONFIGURATION HER =====
-const firebaseConfig = {
+const FB = {
   apiKey: "AIzaSyCoost9WGY16ETSubJSRTbEMqDwEGeWuJM",
   authDomain: "what-might-this-cost.firebaseapp.com",
   databaseURL: "https://what-might-this-cost-default-rtdb.europe-west1.firebasedatabase.app",
@@ -40,7 +40,7 @@ const firebaseConfig = {
   messagingSenderId: "215706728374",
   appId: "1:215706728374:web:f4841f0872bab2c374b317",
   measurementId: "G-DXS64P3T52"
-   // =================================================
+};
 firebase.initializeApp(FB);const db=firebase.database();
 const $=s=>document.querySelector(s),app=$('#app'),R=c=>db.ref('rooms/'+c);
 let offs=0,tm,offFns=[];
