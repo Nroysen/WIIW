@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="da"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gæt en pris</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--y:#ffd60a;--k:#1a1a1a;--r:#d90429;--w:#fff;--g:#14803c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--y);color:var(--k);font:18px Figtree,system-ui,sans-serif}
+#app{max-width:1150px;margin:auto;padding:14px}
+h1,h2,.big,.tag{font-family:Anton,Impact,sans-serif;font-weight:400;line-height:1.05}
+h1{font-size:2.6em;margin:.2em 0}h2{font-size:1.6em;margin:.2em 0 .4em}.big{font-size:3.2em}
+.card{background:var(--w);border:3px solid var(--k);box-shadow:5px 5px 0 var(--k);border-radius:10px;padding:16px;margin:14px 5px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button,.btn{font:700 1em Figtree,sans-serif;background:var(--r);color:#fff;border:3px solid var(--k);border-radius:10px;padding:12px 18px;cursor:pointer;box-shadow:3px 3px 0 var(--k);display:inline-block;text-decoration:none}
+button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--k)}
+button:disabled{opacity:.5}
+.s{background:#fff!important;color:var(--k)!important}.d{background:var(--k)!important}
+input{font:inherit;width:100%;padding:12px;border:3px solid var(--k);border-radius:10px}
+img.ad{max-width:100%;max-height:62vh;display:block;margin:auto;border:3px solid var(--k);border-radius:8px}
+.tag{display:inline-block;background:var(--r);color:#fff;font-size:2.4em;padding:.1em .5em;transform:rotate(-3deg);border-radius:8px;letter-spacing:.08em}
+.mut{opacity:.65}.ok{color:var(--g)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #0002;padding:5px 0}
+</style></head>
+<body><div id="app"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ===== INDSÆT DIN FIREBASE-KONFIGURATION HER =====
+const FB={apiKey:"INDSÆT",authDomain:"INDSÆT.firebaseapp.com",databaseURL:"https://INDSÆT-default-rtdb.europe-west1.firebasedatabase.app",projectId:"INDSÆT",appId:"INDSÆT"};
+// =================================================
+firebase.initializeApp(FB);const db=firebase.database();
+const $=s=>document.querySelector(s),app=$('#app'),R=c=>db.ref('rooms/'+c);
+let offs=0,tm,offFns=[];
+db.ref('.info/serverTimeOffset').on('value',s=>offs=s.val()||0);
+const now=()=>Date.now()+offs;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kr=n=>Number(n).toLocaleString('da-DK',{maximumFractionDigits:2})+' kr';
+const on=(r,f)=>{r.on('value',f);offFns.push(()=>r.off('value',f))};
+const clean=()=>{offFns.forEach(f=>f());offFns=[];clearInterval(tm)};
+const B=(id,f)=>{const e=$('#'+id);if(e)e.onclick=f};
+const li=(a,b)=>`<div class=li><span>${a}</span><b>${b}</b></div>`;
+const nf=()=>'<div class=card>Kunne ikke finde spillet. <a href="#">Til menu</a></div>';
+const qr=(el,t)=>new QRCode(el,{text:t,width:220,height:220});
+const clock=(g,x)=>{tm=setInterval(()=>{const s=g(),e=$('#tm');if(e)e.textContent=s.phase==='guess'&&s.end?Math.max(0,Math.ceil((s.end-now())/1000))+' s':'';x&&x(s)},250)};
+const mkCode=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:4},()=>a[Math.random()*a.length|0]).join('')};
+const T=['Har du nogensinde været i en butik?','Det var ikke engang i nærheden 😂','Gættede du med bind for øjnene?','Prøv at tage brillerne på næste gang','Dristigt gæt… og forkert','Tastede du dit telefonnummer?','Kassedamen græder','Selv mormor ville have ramt bedre'];
+const taunt=(id,i)=>{let h=0;for(const ch of id+i)h=(h*31+ch.charCodeAt(0))>>>0;return T[h%T.length]};
+
+function rank(ad,gs,pl){const L=Object.keys(pl).map(id=>({id,g:gs&&gs[id]!=null?+gs[id]:null})),out={};
+ const a=L.filter(x=>x.g!=null).map(x=>({...x,d:Math.round(Math.abs(x.g-ad.price)*100)/100})).sort((x,y)=>x.d-y.d);let r=0;
+ a.forEach((x,k)=>{if(k===0||x.d!==a[k-1].d)r=k;out[x.id]={g:x.g,d:x.d,r:r+1,pts:(ad.pts||[])[r]||0}});
+ L.filter(x=>x.g==null).forEach(x=>out[x.id]={r:99,pts:0});return out}
+const tot=(res,pl)=>{const t={};Object.keys(pl).forEach(id=>t[id]=0);Object.values(res||{}).forEach(r=>r&&Object.entries(r).forEach(([id,v])=>{if(id in t)t[id]+=v.pts||0}));return t};
+const stand=(res,pl)=>{const t=tot(res,pl);return Object.entries(pl).map(([id,p])=>({id,name:p.name,t:t[id]})).sort((a,b)=>b.t-a.t||a.name.localeCompare(b.name))};
+
+function route(){clean();app.oninput=null;const [k,v]=location.hash.slice(1).split('=');
+ ({h:host,v:view,j:join,new:editor})[k]?({h:host,v:view,j:join,new:editor})[k](v):menu()}
+addEventListener('hashchange',route);
+
+function menu(){app.innerHTML=`<h1>Gæt en pris</h1><div class=card><button id=nw style="width:100%">Opret spil</button></div>
+<div class=card><input id=c placeholder="Deltagerkode" maxlength=4 style="text-transform:uppercase"><div class=row style="margin-top:12px"><button id=j>Deltag i spil</button><button class=s id=v>Vis spil</button></div></div>`;
+ B('nw',()=>location.hash='new');
+ const go=k=>{const c=$('#c').value.trim().toUpperCase();if(c.length===4)location.hash=k+'='+c};B('j',()=>go('j'));B('v',()=>go('v'))}
+
+// ---------- Opret spil ----------
+let draft={title:'',ads:[]};const D='10,7,6,5,4,3,2,1';
+const prs=s=>{const a=String(s).split(/[\s,;]+/).filter(x=>x!=='').map(Number).filter(x=>!isNaN(x));return a.length?a:D.split(',').map(Number)};
+const resize=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const s=Math.min(1,800/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.7))};i.src=URL.createObjectURL(f)});
+function chk(){const ads=draft.ads.map(a=>({img:a.img,price:parseFloat(String(a.price).replace(',','.')),pts:prs(a.pts)}));
+ if(!ads.length||ads.some(a=>isNaN(a.price))){alert('Tilføj mindst én annonce, og angiv en korrekt pris på alle.');return null}return ads}
+function editor(){
+ app.innerHTML=`<h1>Opret spil</h1><div class=card><input id=t placeholder="Spillets titel" value="${esc(draft.title)}"></div><div id=sv class=card style="display:none"></div><div id=ads></div>
+ <div class=card><div class=row><label class=btn>＋ Tilføj annoncebilleder<input id=f type=file accept="image/*" multiple hidden></label><button class=s id=sl>Åbn gemt spil</button></div></div>
+ <div class=row><button class=s id=sg>💾 Gem spil</button><button id=go>Start spil ▶</button><button class=s onclick="location.hash=''">Tilbage</button></div>`;
+ const draw=window.rd=()=>$('#ads').innerHTML=draft.ads.map((a,i)=>`<div class="card row"><img src="${a.img}" style="width:110px;border:2px solid #1a1a1a;border-radius:6px"><div style="flex:1;min-width:200px"><input data-i=${i} data-k=price type=number step=any inputmode=decimal placeholder="Korrekt pris (kr)" value="${esc(a.price)}"><input data-i=${i} data-k=pts placeholder="Point for 1., 2., 3. plads …" value="${esc(a.pts)}" style="margin-top:8px"></div><button class=d onclick="draft.ads.splice(${i},1);rd()">✕</button></div>`).join('');draw();
+ app.oninput=e=>{const d=e.target.dataset;if(d.k)draft.ads[d.i][d.k]=e.target.value;if(e.target.id==='t')draft.title=e.target.value};
+ $('#f').onchange=async e=>{for(const f of e.target.files)draft.ads.push({img:await resize(f),price:'',pts:D});draw();e.target.value=''};
+ B('sl',async()=>{const v=(await db.ref('saved').once('value')).val()||{},e=$('#sv');e.style.display='block';
+  e.innerHTML=Object.keys(v).length?Object.entries(v).map(([k,g])=>`<button class=s style="margin:4px" data-k="${k}">${esc(g.title)} (${g.ads.length})</button>`).join(''):'Ingen gemte spil endnu';
+  e.onclick=ev=>{const g=v[ev.target.dataset.k];if(g){draft={title:g.title,ads:g.ads.map(a=>({...a,pts:a.pts.join(',')}))};editor()}}});
+ B('sg',async()=>{const ads=chk();if(!ads)return;await db.ref('saved').push({title:draft.title||'Uden titel',ads,ts:Date.now()});alert('Spillet er gemt.')});
+ B('go',async()=>{const ads=chk();if(!ads)return;let c;do{c=mkCode()}while((await R(c).child('meta').once('value')).exists());
+  await R(c).set({meta:{title:draft.title||'Gæt en pris',n:ads.length,ts:Date.now()},ads,st:{phase:'lobby',i:0}});location.hash='h='+c})}
+
+// ---------- Host-kontrol ----------
+async function host(c){
+ const snap=await R(c).once('value');if(!snap.exists()){app.innerHTML=nf();return}
+ const ads=snap.child('ads').val(),title=snap.child('meta/title').val(),n=ads.length,joinUrl=location.href.split('#')[0]+'#j='+c;
+ let st={},pl={},gs={},res={},secs=30,busy=0;
+ const goto=i=>R(c).update({cur:{i,img:ads[i].img},st:{phase:'guess',i,end:null},['guesses/'+i]:null,['res/'+i]:null});
+ const reveal=()=>{if(busy)return;busy=1;const i=st.i;R(c).update({['res/'+i]:rank(ads[i],gs[i]||{},pl),st:{phase:'reveal',i},'cur/price':ads[i].price})};
+ const rows=()=>stand(res,pl);
+ const mkpdf=()=>{const d=new jspdf.jsPDF();d.setFontSize(20);d.text(title,14,20);d.setFontSize(12);d.text(new Date().toLocaleDateString('da-DK'),14,28);let y=40;
+  const ln=t=>{d.text(t,14,y);y+=8;if(y>280){d.addPage();y=20}};rows().forEach((r,k)=>ln(`${k+1}. ${r.name}: ${r.t} point`));y+=6;ln('Korrekte priser:');ads.forEach((a,k)=>ln(`Annonce ${k+1}: ${kr(a.price)}`));return d};
+ const draw=()=>{if(document.activeElement?.id==='secs')return;
+  const i=st.i||0,ph=st.phase||'lobby',ids=Object.keys(pl),rd=ids.filter(k=>pl[k].ready).length,tt=tot(res,pl),a=ads[i];
+  const sx=k=>ph==='lobby'?(pl[k].ready?'✅':'⏳'):ph==='guess'?(gs[i]&&gs[i][k]!=null?'✔':'…'):ph==='reveal'?'+'+((res[i]&&res[i][k]&&res[i][k].pts)||0):'';
+  let h=`<div class=row><h1 style="flex:1">${esc(title)}</h1><div class=tag>${c}</div></div><div class=row><a class="btn s" href="#v=${c}" target=_blank>📺 Åbn storskærm</a><a class="btn s" href="#">Menu</a></div>`;
+  if(ph==='lobby')h+=`<div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:10px;background:#fff"></div><p>Deltagerkode <b>${c}</b><br><small class=mut>${joinUrl}</small></p><button id=st0>Start spil (${rd}/${ids.length} klar)</button></div>`;
+  else if(ph==='end'){const S=rows();h+=`<div class=card><h2>🏆 ${S[0]?esc(S[0].name):'–'} vinder!</h2>${S.map((x,k)=>li(`${k+1}. ${esc(x.name)}`,x.t+' p')).join('')}<div class=row style="margin-top:12px"><button class=s id=pv>◀ Tilbage</button><button id=sr>💾 Gem resultat</button><button id=pf class=s>PDF</button><button id=ml class=s>Send PDF på mail</button></div></div>`}
+  else h+=`<div class=card><div class=mut>Annonce ${i+1} af ${n}</div><img class=ad src="${a.img}" style="max-height:30vh"><p>Rigtig pris: <b>${kr(a.price)}</b></p><div class=row>${i>0?'<button id=pv class=s>◀ Forrige</button>':''}<button id=rp class=s>↻ Gentag</button>${ph==='guess'?`<input id=secs type=number value=${secs} style="width:80px"><button id=ts>⏱ Start timer</button><button id=rv class=d>Vis svar</button>`:`<button id=nx>${i+1<n?'Næste ▶':'Afslut 🏁'}</button>`}<span class=big id=tm></span></div></div>`;
+  if(ph!=='end')h+=`<div class=card><h2>Spillere</h2>${ids.map(k=>li(esc(pl[k].name),sx(k)+' · '+tt[k]+' p')).join('')||'<span class=mut>Ingen endnu</span>'}</div>`;
+  app.innerHTML=h;if($('#qr'))qr($('#qr'),joinUrl);
+  const s=$('#secs');if(s)s.oninput=()=>secs=+s.value||30;
+  B('st0',()=>goto(0));B('pv',()=>goto(ph==='end'?n-1:i-1));B('rp',()=>goto(i));B('rv',reveal);
+  B('ts',()=>R(c).child('st/end').set(now()+secs*1000));
+  B('nx',()=>i+1<n?goto(i+1):R(c).child('st').set({phase:'end',i}));
+  B('sr',async()=>{await db.ref('results').push({title,ts:Date.now(),rows:rows()});alert('Resultatet er gemt.')});
+  B('pf',()=>mkpdf().save('Gaet-en-pris.pdf'));
+  B('ml',()=>{const m=(prompt('Send til mail-adresse:')||'').trim();if(!m)return;mkpdf().save('Gaet-en-pris.pdf');
+   location.href=`mailto:${m}?subject=${encodeURIComponent(title+' – resultat')}&body=${encodeURIComponent(rows().map((r,k)=>`${k+1}. ${r.name}: ${r.t} point`).join('\n')+'\n\n(Vedhæft den downloadede PDF)')}`})};
+ on(R(c).child('st'),s=>{st=s.val()||{};busy=0;draw()});
+ on(R(c).child('players'),s=>{pl=s.val()||{};draw()});
+ on(R(c).child('guesses'),s=>{gs=s.val()||{};draw()});
+ on(R(c).child('res'),s=>{res=s.val()||{};draw()});
+ clock(()=>st,s=>{if(s.phase==='guess'&&s.end&&now()>=s.end+800)reveal()})}
+
+// ---------- Deltager (mobil) ----------
+async function join(c){
+ if(!(await R(c).child('meta').once('value')).exists()){app.innerHTML=nf();return}
+ let pid=null;try{pid=localStorage.getItem('p'+c)}catch(e){}
+ let st={},cur={},me=null,res={},pl={},last='';
+ const draw=()=>{const ph=st.phase||'lobby',i=st.i||0,r=res[i]&&res[i][pid],k=[ph,i,!!me,!!r,cur.price!=null,cur.i].join();
+  if(ph==='guess'&&k===last)return;last=k;let h=`<h1>Gæt en pris</h1>`;
+  if(!me){app.innerHTML=h+`<div class=card><input id=n placeholder="Dit navn" maxlength=20><br><br><button id=rb style="width:100%">Ready ✔</button></div>`;
+   B('rb',()=>{const n=$('#n').value.trim();if(!n)return;const p=R(c).child('players').push();pid=p.key;try{localStorage.setItem('p'+c,pid)}catch(e){}p.set({name:n,ready:true})});return}
+  if(ph==='lobby')h+=`<div class=card><h2>Hej ${esc(me.name)}!</h2>Du er klar ✔<br>Vent på at værten starter spillet …</div>`;
+  else if(ph==='guess')h+=cur.i!==i?'<div class=card>Henter annonce …</div>':`<div class=card><img class=ad src="${cur.img}"><div class=big id=tm style="text-align:center"></div><input id=gi type=number inputmode=decimal step=any placeholder="Dit gæt i kr"><br><br><button id=gb style="width:100%">Send gæt</button><p id=ok class=ok></p></div>`;
+  else if(ph==='reveal'){const p=cur.price,g=r&&r.g;h+=`<div class=card><div class=mut>Rigtig pris</div><div class=big>${p!=null?kr(p):'…'}</div>${g!=null?`<p>Dit gæt: <b>${kr(g)}</b><br>Afstand: <b>${kr(r.d)}</b> (${p?(r.d/p*100).toFixed(1):'–'} %)</p><div class="big ok">+${r.pts} point</div><p>Placering: ${r.r}.</p>`:'<p>Du nåede ikke at gætte 😬</p>'}<p class=mut>Din total: ${tot(res,pl)[pid]??0} point</p></div>`}
+  else{const S=stand(res,pl);h+=`<div class=card><h2>Spillet er slut!</h2><p>Du blev nr. <b>${S.findIndex(x=>x.id===pid)+1}</b> af ${S.length} med <b>${tot(res,pl)[pid]??0}</b> point.</p><p>Vinder: 🏆 <b>${esc(S[0]?.name)}</b></p></div>`}
+  app.innerHTML=h;
+  B('gb',()=>{const v=parseFloat($('#gi').value);if(isNaN(v))return;R(c).child('guesses/'+i+'/'+pid).set(v);$('#ok').textContent='Gæt sendt: '+kr(v)+' (du kan ændre det)'})};
+ on(R(c).child('st'),s=>{st=s.val()||{};draw()});
+ on(R(c).child('cur'),s=>{cur=s.val()||{};draw()});
+ on(R(c).child('res'),s=>{res=s.val()||{};draw()});
+ on(R(c).child('players'),s=>{pl=s.val()||{};me=pid&&pl[pid]||null;draw()});
+ clock(()=>st,s=>{const e=$('#gi');if(e&&s.end&&now()>=s.end){e.disabled=true;$('#gb').disabled=true}})}
+
+// ---------- Storskærm (Vis spil) ----------
+async function view(c){
+ const m=await R(c).child('meta').once('value');if(!m.exists()){app.innerHTML=nf();return}
+ const title=m.val().title,n=m.val().n,joinUrl=location.href.split('#')[0]+'#j='+c;let st={},cur={},pl={},gs={},res={};
+ const draw=()=>{const i=st.i||0,ph=st.phase||'lobby',ids=Object.keys(pl),S=stand(res,pl);
+  let h=`<div class=row><h1 style="flex:1;font-size:3.4em">${esc(title)}</h1><div class=tag>${c}</div></div>`;
+  if(ph==='lobby')h+=`<div class=grid><div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:12px;background:#fff"></div><p>Scan koden eller skriv <b>${c}</b></p></div><div class=card><h2>Spillere (${ids.length})</h2>${ids.map(k=>`<div>${pl[k].ready?'✅':'⏳'} ${esc(pl[k].name)}</div>`).join('')}</div></div>`;
+  else if(ph==='guess')h+=cur.i!==i?'':`<div class=card style="text-align:center"><div class=mut>Annonce ${i+1} af ${n}</div><img class=ad src="${cur.img}"><div class=big id=tm></div><div>${ids.filter(k=>gs[i]&&gs[i][k]!=null).length} af ${ids.length} har svaret</div></div>`;
+  else if(ph==='reveal'){const r=res[i]||{},L=ids.map(k=>({k,...(r[k]||{}),name:pl[k].name})).sort((a,b)=>(a.g==null?1e18:a.d)-(b.g==null?1e18:b.d));
+   const top=L.slice(0,5),bot=L.slice(Math.max(5,L.length-3)),ln=x=>li(`${esc(x.name)} <small class=mut>${x.g==null?'intet gæt':kr(x.g)+' (±'+kr(x.d)+')'}</small>`,'+'+(x.pts||0));
+   h+=`<div class=grid><div><div class=card style="text-align:center"><div class=mut>Rigtig pris</div><div class=tag>${cur.price!=null?kr(cur.price):'…'}</div><br><br><img class=ad src="${cur.img}" style="max-height:28vh"></div>
+   <div class=card><h2>Bedste gæt</h2>${top.map(ln).join('')}</div>
+   <div class=card><h2>Dårligste gæt</h2>${bot.map(x=>ln(x)+`<div class=mut><i>${x.g==null?'Sov du? Intet gæt!':taunt(x.k,i)}</i></div>`).join('')}</div></div>
+   <div class=card><h2>Stilling</h2>${S.slice(0,10).map((x,k)=>li(`${k+1}. ${esc(x.name)}`,x.t+' p')).join('')}${S.length>10?'<div class=mut>…</div>'+S.slice(Math.max(10,S.length-5)).map(x=>li(`${S.indexOf(x)+1}. ${esc(x.name)}`,x.t+' p')).join(''):''}</div></div>`}
+  else h+=`<div class=card style="text-align:center"><div class=mut>Vinderen er</div><div class=big>🏆 ${esc(S[0]?.name)}</div><div class=big>${S[0]?.t} point</div></div><div class=card><h2>Slutstilling</h2>${S.slice(0,10).map((x,k)=>li(`${k+1}. ${esc(x.name)}`,x.t+' p')).join('')}</div>`;
+  app.innerHTML=h;if($('#qr'))qr($('#qr'),joinUrl)};
+ on(R(c).child('st'),s=>{st=s.val()||{};draw()});
+ on(R(c).child('cur'),s=>{cur=s.val()||{};draw()});
+ on(R(c).child('players'),s=>{pl=s.val()||{};draw()});
+ on(R(c).child('guesses'),s=>{gs=s.val()||{};draw()});
+ on(R(c).child('res'),s=>{res=s.val()||{};draw()});
+ clock(()=>st)}
+
+route();
+</script></body></html>
