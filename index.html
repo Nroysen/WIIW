@@ -19,6 +19,7 @@ button:disabled{opacity:.5}
 .mini{padding:5px 10px;font-size:.85em;box-shadow:2px 2px 0 var(--k)}
 input{font:inherit;width:100%;padding:12px;border:3px solid var(--k);border-radius:10px}
 input[type=radio]{width:auto}
+select{font:inherit;padding:10px;border:3px solid var(--k);border-radius:10px;background:#fff;max-width:100%}
 img.ad{max-width:100%;max-height:62vh;display:block;margin:auto;border:3px solid var(--k);border-radius:8px}
 .tag{display:inline-block;background:var(--r);color:#fff;font-size:2.4em;padding:.1em .5em;transform:rotate(-3deg);border-radius:8px;letter-spacing:.08em}
 .mut{opacity:.65}.ok{color:var(--g)}
@@ -85,10 +86,13 @@ const rankC=(a,gs,pl)=>{const o={};Object.keys(pl).forEach(id=>{const g=gs&&gs[i
 const tot=(res,pl)=>{const t={};Object.keys(pl).forEach(id=>t[id]=0);Object.values(res||{}).forEach(r=>r&&Object.entries(r).forEach(([id,v])=>{if(id in t)t[id]+=v.pts||0}));return t};
 const stand=(res,pl)=>{const t=tot(res,pl);return Object.entries(pl).map(([id,p])=>({id,name:p.name,t:t[id]})).sort((a,b)=>b.t-a.t||a.name.localeCompare(b.name))};
 
+const sndCache={};
+async function loadSound(id){if(!id)return null;if(sndCache[id])return sndCache[id];
+ const d=(await db.ref('sounds/'+id+'/data').once('value')).val();if(!d)return null;return sndCache[id]=URL.createObjectURL(await (await fetch(d)).blob())}
 function route(){clean();app.oninput=app.onclick=app.onchange=null;const [k,v]=location.hash.slice(1).split('=');
- if(['m','new','saved','start','live','past','h'].includes(k)&&!user){location.hash='login';return}
+ if(['m','new','saved','start','live','past','sounds','h'].includes(k)&&!user){location.hash='login';return}
  if(k==='login'&&user){location.hash='m';return}
- const F={h:host,v:view,j:join,new:editor,login,m:adminMenu,saved:()=>savedList('edit'),start:()=>savedList('start'),live:()=>roomList('live'),past:()=>roomList('past')};(F[k]||menu)(v)}
+ const F={h:host,v:view,j:join,new:editor,login,m:adminMenu,saved:()=>savedList('edit'),start:()=>savedList('start'),live:()=>roomList('live'),past:()=>roomList('past'),sounds:soundsPage};(F[k]||menu)(v)}
 addEventListener('hashchange',route);
 auth.onAuthStateChanged(u=>{user=u;route()});
 
@@ -144,9 +148,9 @@ function editor(){
 function stars(r){const v=Object.values(r||{}),n=v.length,a=n?v.reduce((x,y)=>x+y,0)/n:0;
  return `<span class=stars style="--p:${a*20}%">★★★★★</span> ${n?`<b>${a.toFixed(1).replace('.',',')}</b> <small class=mut>(${n})</small>`:'<small class=mut>Ikke vurderet endnu</small>'}`}
 
-function adminMenu(){app.innerHTML=`<h1>Menu</h1><div class=card style="display:grid;gap:12px"><button id=a1>Opret spil</button><button id=a2 class=s>Åbn gemte spil</button><button id=a3>Start spil</button><button id=a4 class=s>Igangværende spil</button><button id=a5 class=s>Tidligere spil</button></div>
+function adminMenu(){app.innerHTML=`<h1>Menu</h1><div class=card style="display:grid;gap:12px"><button id=a1>Opret spil</button><button id=a2 class=s>Åbn gemte spil</button><button id=a3>Start spil</button><button id=a4 class=s>Igangværende spil</button><button id=a5 class=s>Tidligere spil</button><button id=a6>Lyde</button></div>
 <p><button class=s onclick="location.hash=''">Tilbage</button> <span class=mut>${esc(user.email)} · <a href="#" id=lo>Log ud</a></span></p>`;
- B('a1',()=>{draft={title:'',desc:'',ads:[]};location.hash='new'});B('a2',()=>location.hash='saved');B('a3',()=>location.hash='start');B('a4',()=>location.hash='live');B('a5',()=>location.hash='past');
+ B('a1',()=>{draft={title:'',desc:'',ads:[]};location.hash='new'});B('a2',()=>location.hash='saved');B('a3',()=>location.hash='start');B('a4',()=>location.hash='live');B('a5',()=>location.hash='past');B('a6',()=>location.hash='sounds');
  B('lo',e=>{e.preventDefault();location.hash='';auth.signOut()})}
 
 async function startGame(sid,g){let c;do{c=mkCode()}while((await R(c).child('meta').once('value')).exists());
@@ -171,24 +175,44 @@ async function roomList(mode){
   e.innerHTML=L.length?L.map(r=>{const S=stand(r.rs,r.pl);return `<div class=li style="align-items:flex-start"><span><b>${esc(r.g.title)}</b> <small class=mut>${r.k} · ${new Date(r.g.ts).toLocaleDateString('da-DK')} · ${S.length} spillere</small>${mode==='past'?'<br>'+S.slice(0,3).map((x,i)=>['🥇','🥈','🥉'][i]+' '+esc(x.name)+' ('+x.t+' p)').join(' · '):''}</span><span><a class="btn s mini" href="#h=${r.k}">Åbn</a> <button class="d mini" data-rd="${r.k}">🗑</button></span></div>`}).join(''):'Ingen spil her endnu'};
  app.onclick=async ev=>{const k=ev.target.dataset.rd;if(k&&confirm('Slet spillet '+k+' permanent?')){await db.ref().update({['rooms/'+k]:null,['roomIdx/'+k]:null});draw()}};draw()}
 
+// ---------- Lyde ----------
+const MT={mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav'};
+async function soundsPage(){
+ app.innerHTML=`<h1>Lyde</h1><div class=card><label class=btn>＋ Upload lyd (mp3, m4a, wav)<input id=uf type=file accept=".mp3,.m4a,.wav,audio/*" hidden></label><p class=mut>Maks. 6 MB pr. fil. Er filen større (især wav), så konvertér den til mp3 først.</p><p id=um></p></div><div id=ls class=card>Henter …</div><button class=s onclick="location.hash='m'">Tilbage</button>`;
+ let pv=null;offFns.push(()=>pv&&pv.pause());
+ const draw=async()=>{const v=(await db.ref('soundIdx').once('value')).val()||{},e=$('#ls');if(!e)return;const tot=Object.values(v).reduce((a,x)=>a+x.size,0);
+  e.innerHTML='<h2>Lydbibliotek</h2>'+(Object.keys(v).length?Object.entries(v).sort((a,b)=>b[1].ts-a[1].ts).map(([k,g])=>`<div class=li><span>${esc(g.name)} <small class=mut>${(g.size/1048576).toFixed(1)} MB</small></span><span><button class="s mini" data-p="${k}">▶ Prøv</button> <button class="d mini" data-d="${k}">🗑</button></span></div>`).join('')+`<small class=mut>I alt ${(tot/1048576).toFixed(1)} MB (gratis database: 1 GB)</small>`:'Ingen lyde endnu')};
+ app.onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const ext=f.name.split('.').pop().toLowerCase(),m=$('#um');
+  if(!MT[ext]){m.textContent='Kun mp3, m4a og wav.';return}
+  if(f.size>6*1048576){m.textContent='Filen er for stor ('+(f.size/1048576).toFixed(1)+' MB). Maks. 6 MB.';return}
+  m.textContent='Uploader …';
+  try{const d=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.replace(/^data:[^;]*;/,'data:'+MT[ext]+';'));fr.readAsDataURL(f)});
+   const id=db.ref('soundIdx').push().key;
+   await db.ref().update({['sounds/'+id]:{data:d},['soundIdx/'+id]:{name:f.name.replace(/\.[^.]+$/,''),size:f.size,ts:Date.now()}});
+   m.textContent='Uploadet ✔';e.target.value='';draw()}catch(x){m.textContent='Kunne ikke uploade: '+x.message}};
+ app.onclick=async ev=>{const d=ev.target.dataset;
+  if(d.p){if(pv){pv.pause();pv=null}const u=await loadSound(d.p);if(u){pv=new Audio(u);pv.play()}}
+  else if(d.d&&confirm('Slet lyden?')){await db.ref().update({['sounds/'+d.d]:null,['soundIdx/'+d.d]:null});draw()}};
+ draw()}
+
 // ---------- Host-kontrol ----------
 async function host(c){
  const snap=await R(c).once('value');if(!snap.exists()){app.innerHTML=nf();return}
  const ads=snap.child('ads').val(),title=snap.child('meta/title').val(),n=ads.length,joinUrl=location.href.split('#')[0]+'#j='+c;
- let st={},pl={},gs={},res={},secs=30,busy=0,fired=0;
+ let st={},pl={},gs={},res={},secs=30,busy=0,fired=0,au={},snds={};try{snds=(await db.ref('soundIdx').once('value')).val()||{}}catch(e){}
  const qn=i=>({k:ads.slice(0,i+1).filter(x=>typ(x)!=='s').length,n:ads.filter(x=>typ(x)!=='s').length});
  const goto=i=>{const a=ads[i],t=typ(a),q=qn(i);R(c).update({cur:{i,type:t,img:a.img||null,text:a.text||null,title:a.title||null,opts:a.opts?a.opts.map(o=>({t:o.t||'',img:o.img||null})):null,k:q.k,n:q.n},st:{phase:t==='s'?'splash':'guess',i,end:null},['guesses/'+i]:null,['res/'+i]:null})};
  const reveal=()=>{if(busy)return;busy=1;const i=st.i,a=ads[i],u={st:{phase:'reveal',i}};
   if(typ(a)==='c'){u['res/'+i]=rankC(a,gs[i]||{},pl);u['cur/correct']=a.correct}else{u['res/'+i]=rank(a,gs[i]||{},pl);u['cur/price']=a.price}R(c).update(u)};
- const rows=()=>stand(res,pl);
+ const rows=()=>stand(res,pl),opt=v=>'<option value="">Ingen</option>'+Object.entries(snds).map(([k,g])=>`<option value="${k}"${v===k?' selected':''}>${esc(g.name)}</option>`).join('');
  const mkpdf=()=>{const d=new jspdf.jsPDF();d.setFontSize(20);d.text(title,14,20);d.setFontSize(12);d.text(new Date().toLocaleDateString('da-DK'),14,28);let y=40;
   const ln=t=>{d.text(t,14,y);y+=8;if(y>280){d.addPage();y=20}};rows().forEach((r,k)=>ln(`${k+1}. ${r.name}: ${r.t} point`));y+=6;ln('Korrekte svar:');
   ads.forEach((a,k)=>{if(typ(a)==='q')ln(`Gæt en pris ${qn(k).k}: ${kr(a.price)}`);else if(typ(a)==='c')ln(`Spørgsmål ${qn(k).k}: ${L4[a.correct]}`)});return d};
- const draw=()=>{if(document.activeElement?.id==='secs')return;
+ const draw=()=>{if(['secs','sa','sj'].includes(document.activeElement?.id))return;
   const i=st.i||0,ph=st.phase||'lobby',ids=Object.keys(pl),rd=ids.filter(k=>pl[k].ready).length,tt=tot(res,pl),a=ads[i];
   const sx=k=>ph==='lobby'?(pl[k].ready?'✅':'⏳'):ph==='guess'?(gs[i]&&gs[i][k]!=null?'✔':'…'):ph==='reveal'?'+'+((res[i]&&res[i][k]&&res[i][k].pts)||0):'';
   let h=`<div class=row><h1 style="flex:1">${esc(title)}</h1><div class=tag>${c}</div></div><div class=row><a class="btn s" href="#v=${c}" target=_blank>📺 Åbn storskærm</a><a class="btn s" href="#">Menu</a></div>`;
-  if(ph==='lobby')h+=`<div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:10px;background:#fff"></div><p>Deltagerkode <b>${c}</b><br><small class=mut>${joinUrl}</small></p><button id=st0>Start spil (${rd}/${ids.length} klar)</button></div>`;
+  if(ph==='lobby')h+=`<div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:10px;background:#fff"></div><p>Deltagerkode <b>${c}</b><br><small class=mut>${joinUrl}</small></p><p style="text-align:left">🎵 Soundtrack <select id=sa>${opt(au.track)}</select><br>🔔 Jingle når svaret vises <select id=sj>${opt(au.jingle)}</select><br><small class=mut>Spilles på storskærmen, hvor du skal trykke "Slå lyd til".</small></p><button id=st0>Start spil (${rd}/${ids.length} klar)</button></div>`;
   else if(ph==='end'){const S=rows();h+=`<div class=card><h2>🏆 ${S[0]?esc(S[0].name):'–'} vinder!</h2>${S.map((x,k)=>li(`${k+1}. ${esc(x.name)}`,x.t+' p')).join('')}<div class=row style="margin-top:12px"><button class=s id=pv>◀ Tilbage</button><button id=sr>💾 Gem resultat</button><button id=pf class=s>PDF</button><button id=ml class=s>Send PDF på mail</button></div>${bm()}</div>`}
   else{const t=typ(a);h+=`<div class=card><div class=mut>${t==='s'?'Slide':'Gæt en pris '+qn(i).k+' af '+qn(i).n}</div>${a.img?`<img class=ad src="${a.img}" style="max-height:30vh">`:''}${t==='s'?`<h2>${esc(a.title)}</h2>`:''}${a.text?`<p>${esc(a.text)}</p>`:''}${t==='q'?`<p>Rigtig pris: <b>${kr(a.price)}</b></p>`:t==='c'?`<p>${a.opts.map((o,k)=>L4[k]+': '+(o.t||'(billede)')).join(' · ')}<br>Rigtigt svar: <b>${L4[a.correct]}</b></p>`:''}
    <div class=row>${i>0?'<button id=pv class=s>◀ Forrige</button>':''}${t!=='s'?'<button id=rp class=s>↻ Gentag</button>':''}${ph==='guess'?`<input id=secs type=number value=${secs} style="width:80px"><button id=ts>⏱ Start timer</button><button id=rv class=d>Vis svar</button>`:`<button id=nx>${i+1<n?'Næste ▶':'Afslut 🏁'}</button>`}<span class=big id=tm></span></div></div>`}
@@ -197,7 +221,7 @@ async function host(c){
   if(ph==='end'&&!fired){fired=1;confetti()}
   app.onclick=e=>{const k=e.target.dataset.kick;if(k&&confirm('Smid '+pl[k].name+' ud af spillet?'))R(c).child('players/'+k).remove()};
   const s=$('#secs');if(s)s.oninput=()=>secs=+s.value||30;
-  B('st0',()=>goto(0));B('pv',()=>goto(ph==='end'?n-1:i-1));B('rp',()=>goto(i));B('rv',reveal);B('bm',()=>location.hash='');
+  B('st0',()=>goto(0));if($('#sa'))$('#sa').onchange=$('#sj').onchange=()=>R(c).child('audio').set({track:$('#sa').value||null,jingle:$('#sj').value||null});B('pv',()=>goto(ph==='end'?n-1:i-1));B('rp',()=>goto(i));B('rv',reveal);B('bm',()=>location.hash='');
   B('ts',()=>R(c).child('st/end').set(now()+secs*1000));
   B('nx',()=>i+1<n?goto(i+1):R(c).child('st').set({phase:'end',i}));
   B('sr',async()=>{await db.ref('results').push({title,ts:Date.now(),rows:rows()});alert('Resultatet er gemt.')});
@@ -205,6 +229,7 @@ async function host(c){
   B('ml',()=>{const m=(prompt('Send til mail-adresse:')||'').trim();if(!m)return;mkpdf().save('Gaet-en-pris.pdf');
    location.href=`mailto:${m}?subject=${encodeURIComponent(title+' – resultat')}&body=${encodeURIComponent(rows().map((r,k)=>`${k+1}. ${r.name}: ${r.t} point`).join('\n')+'\n\n(Vedhæft den downloadede PDF)')}`})};
  on(R(c).child('st'),s=>{st=s.val()||{};busy=0;draw()});
+ on(R(c).child('audio'),s=>{au=s.val()||{};draw()});
  on(R(c).child('players'),s=>{pl=s.val()||{};draw()});
  on(R(c).child('guesses'),s=>{gs=s.val()||{};draw()});
  on(R(c).child('res'),s=>{res=s.val()||{};draw()});
@@ -271,5 +296,14 @@ async function view(c){
  on(R(c).child('players'),s=>{pl=s.val()||{};draw()});
  on(R(c).child('guesses'),s=>{gs=s.val()||{};draw()});
  on(R(c).child('res'),s=>{res=s.val()||{};draw()});
+ const mus=new Audio(),jg=new Audio();mus.loop=true;let armed=0,muted=0,au={},lk='';
+ const btn=document.createElement('button');btn.id='sndb';btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:5;display:none';document.body.appendChild(btn);
+ offFns.push(()=>{mus.pause();jg.pause();btn.remove()});
+ const sync=()=>{const ph=st.phase||'lobby';btn.style.display=(au.track||au.jingle)?'block':'none';btn.textContent=!armed?'🔊 Slå lyd til':muted?'🔇 Lyd fra':'🔊 Lyd til';
+  if(!armed||muted||!mus.src||ph==='end'){mus.pause();return}mus.volume=ph==='reveal'?.12:.4;mus.play().catch(()=>{})};
+ btn.onclick=()=>{if(!armed){armed=1;[mus,jg].forEach(a=>{if(a.src){a.muted=true;a.play().then(()=>{a.pause();a.currentTime=0;a.muted=false;sync()}).catch(()=>{a.muted=false})}})}else muted=!muted;sync()};
+ on(R(c).child('audio'),async s=>{au=s.val()||{};const [t,j]=await Promise.all([loadSound(au.track),loadSound(au.jingle)]);
+  if(t)mus.src=t;else mus.removeAttribute('src');if(j)jg.src=j;else jg.removeAttribute('src');sync()});
+ on(R(c).child('st'),s=>{const v=s.val()||{},k=v.phase+':'+v.i;if(v.phase==='reveal'&&k!==lk&&armed&&!muted&&jg.src){jg.currentTime=0;jg.play().catch(()=>{})}lk=k;sync()});
  clock(()=>st)}
 </script></body></html>
