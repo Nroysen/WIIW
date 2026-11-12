@@ -208,11 +208,11 @@ async function host(c){
  const mkpdf=()=>{const d=new jspdf.jsPDF();d.setFontSize(20);d.text(title,14,20);d.setFontSize(12);d.text(new Date().toLocaleDateString('da-DK'),14,28);let y=40;
   const ln=t=>{d.text(t,14,y);y+=8;if(y>280){d.addPage();y=20}};rows().forEach((r,k)=>ln(`${k+1}. ${r.name}: ${r.t} point`));y+=6;ln('Korrekte svar:');
   ads.forEach((a,k)=>{if(typ(a)==='q')ln(`Gæt en pris ${qn(k).k}: ${kr(a.price)}`);else if(typ(a)==='c')ln(`Spørgsmål ${qn(k).k}: ${L4[a.correct]}`)});return d};
- const draw=()=>{if(['secs','sa','sj'].includes(document.activeElement?.id))return;
+ const draw=()=>{if(['secs','sa','sj','se'].includes(document.activeElement?.id))return;
   const i=st.i||0,ph=st.phase||'lobby',ids=Object.keys(pl),rd=ids.filter(k=>pl[k].ready).length,tt=tot(res,pl),a=ads[i];
   const sx=k=>ph==='lobby'?(pl[k].ready?'✅':'⏳'):ph==='guess'?(gs[i]&&gs[i][k]!=null?'✔':'…'):ph==='reveal'?'+'+((res[i]&&res[i][k]&&res[i][k].pts)||0):'';
   let h=`<div class=row><h1 style="flex:1">${esc(title)}</h1><div class=tag>${c}</div></div><div class=row><a class="btn s" href="#v=${c}" target=_blank>📺 Åbn storskærm</a><a class="btn s" href="#">Menu</a></div>`;
-  if(ph==='lobby')h+=`<div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:10px;background:#fff"></div><p>Deltagerkode <b>${c}</b><br><small class=mut>${joinUrl}</small></p><p style="text-align:left">🎵 Soundtrack <select id=sa>${opt(au.track)}</select><br>🔔 Jingle når svaret vises <select id=sj>${opt(au.jingle)}</select><br><small class=mut>Spilles på storskærmen, hvor du skal trykke "Slå lyd til".</small></p><button id=st0>Start spil (${rd}/${ids.length} klar)</button></div>`;
+  if(ph==='lobby')h+=`<div class=card style="text-align:center"><div id=qr style="display:inline-block;padding:10px;background:#fff"></div><p>Deltagerkode <b>${c}</b><br><small class=mut>${joinUrl}</small></p><p style="text-align:left">🎵 Soundtrack <select id=sa>${opt(au.track)}</select><br>🔔 Jingle når svaret vises <select id=sj>${opt(au.jingle)}</select><br>🏆 Slutmusik når resultatet vises <select id=se>${opt(au.end)}</select><br><small class=mut>Spilles på storskærmen, hvor du skal trykke "Slå lyd til".</small></p><button id=st0>Start spil (${rd}/${ids.length} klar)</button></div>`;
   else if(ph==='end'){const S=rows();h+=`<div class=card><h2>🏆 ${S[0]?esc(S[0].name):'–'} vinder!</h2>${S.map((x,k)=>li(`${k+1}. ${esc(x.name)}`,x.t+' p')).join('')}<div class=row style="margin-top:12px"><button class=s id=pv>◀ Tilbage</button><button id=sr>💾 Gem resultat</button><button id=pf class=s>PDF</button><button id=ml class=s>Send PDF på mail</button></div>${bm()}</div>`}
   else{const t=typ(a);h+=`<div class=card><div class=mut>${t==='s'?'Slide':'Gæt en pris '+qn(i).k+' af '+qn(i).n}</div>${a.img?`<img class=ad src="${a.img}" style="max-height:30vh">`:''}${t==='s'?`<h2>${esc(a.title)}</h2>`:''}${a.text?`<p>${esc(a.text)}</p>`:''}${t==='q'?`<p>Rigtig pris: <b>${kr(a.price)}</b></p>`:t==='c'?`<p>${a.opts.map((o,k)=>L4[k]+': '+(o.t||'(billede)')).join(' · ')}<br>Rigtigt svar: <b>${L4[a.correct]}</b></p>`:''}
    <div class=row>${i>0?'<button id=pv class=s>◀ Forrige</button>':''}${t!=='s'?'<button id=rp class=s>↻ Gentag</button>':''}${ph==='guess'?`<input id=secs type=number value=${secs} style="width:80px"><button id=ts>⏱ Start timer</button><button id=rv class=d>Vis svar</button>`:`<button id=nx>${i+1<n?'Næste ▶':'Afslut 🏁'}</button>`}<span class=big id=tm></span></div></div>`}
@@ -221,7 +221,7 @@ async function host(c){
   if(ph==='end'&&!fired){fired=1;confetti()}
   app.onclick=e=>{const k=e.target.dataset.kick;if(k&&confirm('Smid '+pl[k].name+' ud af spillet?'))R(c).child('players/'+k).remove()};
   const s=$('#secs');if(s)s.oninput=()=>secs=+s.value||30;
-  B('st0',()=>goto(0));if($('#sa'))$('#sa').onchange=$('#sj').onchange=()=>R(c).child('audio').set({track:$('#sa').value||null,jingle:$('#sj').value||null});B('pv',()=>goto(ph==='end'?n-1:i-1));B('rp',()=>goto(i));B('rv',reveal);B('bm',()=>location.hash='');
+  B('st0',()=>goto(0));if($('#sa'))$('#sa').onchange=$('#sj').onchange=$('#se').onchange=()=>R(c).child('audio').set({track:$('#sa').value||null,jingle:$('#sj').value||null,end:$('#se').value||null});B('pv',()=>goto(ph==='end'?n-1:i-1));B('rp',()=>goto(i));B('rv',reveal);B('bm',()=>location.hash='');
   B('ts',()=>R(c).child('st/end').set(now()+secs*1000));
   B('nx',()=>i+1<n?goto(i+1):R(c).child('st').set({phase:'end',i}));
   B('sr',async()=>{await db.ref('results').push({title,ts:Date.now(),rows:rows()});alert('Resultatet er gemt.')});
@@ -296,14 +296,14 @@ async function view(c){
  on(R(c).child('players'),s=>{pl=s.val()||{};draw()});
  on(R(c).child('guesses'),s=>{gs=s.val()||{};draw()});
  on(R(c).child('res'),s=>{res=s.val()||{};draw()});
- const mus=new Audio(),jg=new Audio();mus.loop=true;let armed=0,muted=0,au={},lk='';
+ const mus=new Audio(),jg=new Audio(),fin=new Audio();mus.loop=true;let armed=0,muted=0,au={},lk='';
  const btn=document.createElement('button');btn.id='sndb';btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:5;display:none';document.body.appendChild(btn);
- offFns.push(()=>{mus.pause();jg.pause();btn.remove()});
- const sync=()=>{const ph=st.phase||'lobby';btn.style.display=(au.track||au.jingle)?'block':'none';btn.textContent=!armed?'🔊 Slå lyd til':muted?'🔇 Lyd fra':'🔊 Lyd til';
-  if(!armed||muted||!mus.src||ph==='end'){mus.pause();return}mus.volume=ph==='reveal'?.12:.4;mus.play().catch(()=>{})};
- btn.onclick=()=>{if(!armed){armed=1;[mus,jg].forEach(a=>{if(a.src){a.muted=true;a.play().then(()=>{a.pause();a.currentTime=0;a.muted=false;sync()}).catch(()=>{a.muted=false})}})}else muted=!muted;sync()};
- on(R(c).child('audio'),async s=>{au=s.val()||{};const [t,j]=await Promise.all([loadSound(au.track),loadSound(au.jingle)]);
-  if(t)mus.src=t;else mus.removeAttribute('src');if(j)jg.src=j;else jg.removeAttribute('src');sync()});
- on(R(c).child('st'),s=>{const v=s.val()||{},k=v.phase+':'+v.i;if(v.phase==='reveal'&&k!==lk&&armed&&!muted&&jg.src){jg.currentTime=0;jg.play().catch(()=>{})}lk=k;sync()});
+ offFns.push(()=>{mus.pause();jg.pause();fin.pause();btn.remove()});
+ const sync=()=>{const ph=st.phase||'lobby';btn.style.display=(au.track||au.jingle||au.end)?'block':'none';btn.textContent=!armed?'🔊 Slå lyd til':muted?'🔇 Lyd fra':'🔊 Lyd til';
+  if(ph!=='end'||muted)fin.pause();if(!armed||muted||!mus.src||ph==='end'){mus.pause();return}mus.volume=ph==='reveal'?.12:.4;mus.play().catch(()=>{})};
+ btn.onclick=()=>{if(!armed){armed=1;[mus,jg,fin].forEach(a=>{if(a.src){a.muted=true;a.play().then(()=>{a.pause();a.currentTime=0;a.muted=false;sync()}).catch(()=>{a.muted=false})}})}else muted=!muted;sync()};
+ on(R(c).child('audio'),async s=>{au=s.val()||{};const [t,j,z]=await Promise.all([loadSound(au.track),loadSound(au.jingle),loadSound(au.end)]);
+  if(t)mus.src=t;else mus.removeAttribute('src');if(j)jg.src=j;else jg.removeAttribute('src');if(z)fin.src=z;else fin.removeAttribute('src');sync()});
+ on(R(c).child('st'),s=>{const v=s.val()||{},k=v.phase+':'+v.i;if(v.phase==='reveal'&&k!==lk&&armed&&!muted&&jg.src){jg.currentTime=0;jg.play().catch(()=>{})}if(v.phase==='end'&&k!==lk&&armed&&!muted&&fin.src){fin.currentTime=0;fin.play().catch(()=>{})}lk=k;sync()});
  clock(()=>st)}
 </script></body></html>
