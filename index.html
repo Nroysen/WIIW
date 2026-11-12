@@ -156,10 +156,10 @@ async function startGame(sid,g){let c;do{c=mkCode()}while((await R(c).child('met
 async function savedList(mode){
  app.innerHTML=`<h1>${mode==='start'?'Start spil':'Gemte spil'}</h1><div id=ls class=card>Henter …</div><button class=s onclick="location.hash='m'">Tilbage</button>`;let v={};
  const draw=async()=>{const [s1,s2]=await Promise.all([db.ref('saved').once('value'),db.ref('ratings').once('value')]);v=s1.val()||{};const rt=s2.val()||{},e=$('#ls');if(!e)return;
-  e.innerHTML=Object.keys(v).length?Object.entries(v).sort((a,b)=>b[1].ts-a[1].ts).map(([k,g])=>`<div class=li style="align-items:flex-start"><span><b>${esc(g.title)}</b> <small class=mut>(${g.ads.length} punkter)</small><br><small>${esc(g.desc||'')}</small><br>${stars(rt[k])}</span><span>${mode==='start'?`<button data-st="${k}">▶ Start</button>`:`<button class="s mini" data-ed="${k}">Åbn</button> <button class="d mini" data-del="${k}">🗑</button>`}</span></div>`).join(''):'Ingen gemte spil endnu'};
+  e.innerHTML=Object.keys(v).length?Object.entries(v).sort((a,b)=>b[1].ts-a[1].ts).map(([k,g])=>`<div class=li style="align-items:flex-start"><span><b>${esc(g.title)}</b> <small class=mut>(${g.ads.length} punkter)</small><br><small>${esc(g.desc||'')}</small><br>${stars(rt[k])}</span><span>${mode==='start'?`<button data-st="${k}">▶ Start</button>`:`<button class="s mini" data-ed="${k}">Åbn</button> <button class="s mini" data-dup="${k}">Duplikér</button> <button class="d mini" data-del="${k}">🗑</button>`}</span></div>`).join(''):'Ingen gemte spil endnu'};
  app.onclick=async ev=>{const d=ev.target.dataset;
   if(d.del&&confirm('Slet spillet og dets ratings?')){await db.ref().update({['saved/'+d.del]:null,['ratings/'+d.del]:null});draw()}
-  else if(d.ed){const g=v[d.ed];draft={id:d.ed,title:g.title,desc:g.desc||'',ads:g.ads.map(a=>typ(a)==='q'?{...a,pts:(a.pts||[]).join(',')}:a)};location.hash='new'}
+  else if(d.ed||d.dup){const k=d.ed||d.dup,g=JSON.parse(JSON.stringify(v[k]));draft={...(d.ed?{id:k}:{}),title:(d.dup?'Kopi af ':'')+g.title,desc:g.desc||'',ads:g.ads.map(a=>typ(a)==='q'?{...a,pts:(a.pts||[]).join(',')}:a)};location.hash='new'}
   else if(d.st){ev.target.disabled=true;await startGame(d.st,v[d.st])}};
  draw()}
 
